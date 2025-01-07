@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+# Python related
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# Macos
+.DS_Store
