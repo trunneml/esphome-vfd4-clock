@@ -1,0 +1,161 @@
+
+# VFD4-Clock Pins
+
+# GPIO-1    TX / SET    - 3
+# GPIO-3    RX / ADD    - 5
+# GPIO-5    DS Clk
+# GPIO-4    DS IO
+# GPIO-0    DS CE       - 4
+# GPIO-2    LED-Ring    - 6
+#           ESP-VCC     - 1
+#           ESP-EN      - 2
+#           ESP-GND     - 8
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/trombik/esphome-component-ds1302
+    components:
+      - ds1302
+  - source:
+      type: git
+      url: https://github.com/trunneml/esphome-vfd4-clock
+    components:
+        - vfd4
+
+#
+# Buttons
+#
+binary_sensor:
+  - platform: gpio
+    pin:
+      # TX-Pin
+      number: GPIO1
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: Set-Button
+    id: setbtn
+
+  - platform: gpio
+    pin:
+      # RX-Pin
+      number: GPIO3
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    name: Add-Button
+    id: addbtn
+
+
+#
+# Display
+#
+display:
+  - platform: vfd4
+    id: vfd4display
+    stb_pin: GPIO12
+    clk_pin: GPIO14
+    data_pin: GPIO13
+    update_interval: 0ms
+
+switch:
+  - platform: gpio
+    pin: GPIO16
+    id: displblank
+    name: Display Blank
+
+output:
+  - platform: esp8266_pwm
+    pin: GPIO15
+    frequency: 5000 Hz
+    id: displbrightness_out
+    min_power: 0.20
+    zero_means_zero: true
+
+light:
+  - platform: monochromatic
+    output: displbrightness_out
+    name: "Display Brightness"
+    gamma_correct: 1.5
+    restore_mode: RESTORE_AND_ON
+
+#
+# LED-Ring and LEDs under Chip
+#
+# GPIO 02 LED-Ring
+  - platform: neopixelbus
+    type: GRB
+    variant: LC8812
+    pin: GPIO2
+    num_leds: 68
+    id: leds
+  - platform: partition
+    name: "LED ring"
+    id: ledring
+    restore_mode: RESTORE_AND_ON
+    segments:
+      - id: leds
+        from: 0
+        to: 59
+    effects:
+      - addressable_scan:
+      - addressable_twinkle:
+      - addressable_fireworks:
+      - addressable_lambda:
+          name: "Second hand"
+          update_interval: 250ms
+          lambda: |-
+            auto time = id(ds1302_time).now();
+            for (int i = 0; i < 60; i++) {
+              if (i == time.second) {
+                it[i] = current_color;
+              } else {
+                it[i] = Color(0, 0, 0);
+              }
+            }
+      - addressable_lambda:
+          name: "Clock"
+          update_interval: 250ms
+          lambda: |-
+            auto time = id(ds1302_time).now();
+            for (int i = 0; i < 60; i++) {
+              it[i] = Color(
+                ((time.hour % 12) * 5) == i ? 255 : 0,
+                i == time.minute ? 255 : 0,
+                i == time.second ? 255 : 0);
+            }
+      - addressable_flicker:
+          name: Flicker
+          update_interval: 100ms
+          intensity: 25%
+  - platform: partition
+    name: "LED under chip"
+    restore_mode: RESTORE_AND_ON
+    id: ledchip
+    segments:
+      - id: leds
+        from: 60
+        to: 67
+    effects:
+      - addressable_scan:
+      - addressable_fireworks:
+      - addressable_flicker:
+      - addressable_twinkle:
+
+#
+# DS1302 Realtime Clock
+#
+time:
+  - platform: ds1302
+    id: ds1302_time
+    # on some modules, CS is labeled as RST
+    cs_pin: GPIO0
+    dio_pin: GPIO4
+    clk_pin: GPIO5
+    # repeated synchronization is not necessary unless the external RTC
+    # is much more accurate than the internal clock
+    update_interval: never
+    timezone: Europe/Berlin
